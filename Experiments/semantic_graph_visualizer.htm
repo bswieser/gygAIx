@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qwen Semantic Graph Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        
+        .canvas-container {
+            position: relative;
+            transform-origin: top center;
+            transition: transform 0.2s ease-out;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <header class="bg-slate-900 border-b border-slate-800 py-3 px-6 shrink-0 z-20 flex justify-between items-center shadow-lg">
+        <div class="flex items-center gap-3">
+            <div class="p-2 bg-indigo-500/20 text-indigo-400 rounded border border-indigo-500/30">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path></svg>
+            </div>
+            <div>
+                <h1 class="text-sm font-bold text-white tracking-tight">Qwen-VL Semantic Overlay</h1>
+                <p class="text-[10px] text-slate-400">Viewing simulated artifact: p-34.json</p>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-3">
+            <label class="flex items-center gap-2 cursor-pointer bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors">
+                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                Upload Background Image
+                <input type="file" id="imageUpload" accept="image/*" class="hidden">
+            </label>
+            <div class="h-6 w-px bg-slate-700"></div>
+            <button id="toggleArrows" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors">
+                Toggle Sequence Arrows
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-grow flex overflow-hidden">
+        <!-- Sidebar for node list -->
+        <aside class="w-80 bg-slate-900 border-r border-slate-800 flex flex-col flex-shrink-0 z-10 shadow-xl">
+            <div class="p-3 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
+                <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400">Semantic Sequence</h2>
+                <span class="bg-slate-800 text-slate-300 text-[10px] px-2 py-0.5 rounded font-mono" id="nodeCount">0 Nodes</span>
+            </div>
+            <div class="flex-grow overflow-y-auto p-3 space-y-2" id="sidebarList">
+                <!-- Nodes injected by JS -->
+            </div>
+        </aside>
+
+        <!-- Main canvas area -->
+        <section class="flex-grow bg-slate-950 relative flex items-center justify-center overflow-auto p-8" id="workspace">
+            <div class="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px] opacity-50 pointer-events-none"></div>
+            
+            <div class="canvas-container bg-white" id="container">
+                <!-- Base image canvas -->
+                <canvas id="bgCanvas" class="absolute inset-0 z-0"></canvas>
+                <!-- Semantic overlay canvas -->
+                <canvas id="overlayCanvas" class="absolute inset-0 z-10 pointer-events-none"></canvas>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // The simulated output from Qwen-VL based on the user's p-34 prompt
+        const semanticData = {
+            "page_metadata": {
+                "source_file": "p-34",
+                "source_width": 754,
+                "source_height": 1024,
+                "total_semantic_blocks": 19
+            },
+            "semantic_graph": {
+                "page_elements": [
+                    {"id": "node_3", "semantic_role": "Paragraph", "bounding_box": [26, 50, 369, 182], "reading_order": 1},
+                    {"id": "node_4", "semantic_role": "Paragraph", "bounding_box": [26, 192, 369, 265], "reading_order": 2},
+                    {"id": "node_5_6_merged", "semantic_role": "Table", "bounding_box": [38, 274, 305, 312], "reading_order": 3},
+                    {"id": "node_7", "semantic_role": "Paragraph", "bounding_box": [26, 326, 371, 599], "reading_order": 4},
+                    {"id": "node_8", "semantic_role": "Paragraph", "bounding_box": [27, 620, 371, 670], "reading_order": 5},
+                    {"id": "node_9", "semantic_role": "Subheader", "bounding_box": [27, 679, 238, 694], "reading_order": 6},
+                    {"id": "node_16_17_18_merged", "semantic_role": "Table", "bounding_box": [27, 698, 363, 772], "reading_order": 7},
+                    {"id": "node_19", "semantic_role": "Subheader", "bounding_box": [38, 778, 95, 813], "reading_order": 8},
+                    {"id": "node_20", "semantic_role": "Paragraph", "bounding_box": [26, 822, 369, 989], "reading_order": 9},
+                    {"id": "node_10", "semantic_role": "Paragraph", "bounding_box": [400, 47, 754, 137], "reading_order": 10},
+                    {"id": "node_11", "semantic_role": "Paragraph", "bounding_box": [400, 145, 754, 229], "reading_order": 11},
+                    {"id": "node_12", "semantic_role": "Paragraph", "bounding_box": [400, 238, 754, 395], "reading_order": 12},
+                    {"id": "node_13", "semantic_role": "Paragraph", "bounding_box": [400, 404, 742, 501], "reading_order": 13},
+                    {"id": "node_14", "semantic_role": "Paragraph", "bounding_box": [400, 510, 742, 582], "reading_order": 14},
+                    {"id": "node_15", "semantic_role": "Paragraph", "bounding_box": [400, 593, 742, 689], "reading_order": 15},
+                    {"id": "node_21", "semantic_role": "Paragraph", "bounding_box": [400, 698, 742, 855], "reading_order": 16},
+                    {"id": "node_22", "semantic_role": "Paragraph", "bounding_box": [400, 864, 742, 914], "reading_order": 17},
+                    {"id": "node_23", "semantic_role": "Paragraph", "bounding_box": [418, 929, 550, 989], "reading_order": 18},
+                    {"id": "node_24", "semantic_role": "Page Number", "bounding_box": [379, 1000, 392, 1010], "reading_order": 19}
+                ]
+            }
+        };
+
+        const roleColors = {
+            "Paragraph": { stroke: "#3b82f6", fill: "rgba(59, 130, 246, 0.15)", text: "#bfdbfe" }, // Blue
+            "Table": { stroke: "#f59e0b", fill: "rgba(245, 158, 11, 0.15)", text: "#fde68a" }, // Amber
+            "Subheader": { stroke: "#a855f7", fill: "rgba(168, 85, 247, 0.15)", text: "#e9d5ff" }, // Purple
+            "Page Number": { stroke: "#64748b", fill: "rgba(100, 116, 139, 0.15)", text: "#cbd5e1" }, // Slate
+            "Default": { stroke: "#10b981", fill: "rgba(16, 185, 129, 0.15)", text: "#a7f3d0" } // Emerald
+        };
+
+        let showArrows = true;
+        let hoveredNodeId = null;
+        let bgImage = null;
+
+        const container = document.getElementById('container');
+        const bgCanvas = document.getElementById('bgCanvas');
+        const overlayCanvas = document.getElementById('overlayCanvas');
+        const sidebarList = document.getElementById('sidebarList');
+        
+        const bCtx = bgCanvas.getContext('2d');
+        const oCtx = overlayCanvas.getContext('2d');
+
+        const width = semanticData.page_metadata.source_width;
+        const height = semanticData.page_metadata.source_height;
+
+        function init() {
+            // Set canvas sizes
+            container.style.width = `${width}px`;
+            container.style.height = `${height}px`;
+            
+            bgCanvas.width = width;
+            bgCanvas.height = height;
+            overlayCanvas.width = width;
+            overlayCanvas.height = height;
+
+            document.getElementById('nodeCount').textContent = `${semanticData.semantic_graph.page_elements.length} Nodes`;
+
+            // Draw initial placeholder background
+            drawPlaceholderBackground();
+            
+            // Populate Sidebar
+            populateSidebar();
+
+            // Draw Overlay
+            drawOverlay();
+
+            // Fit scale
+            fitToScreen();
+            window.addEventListener('resize', fitToScreen);
+        }
+
+        function drawPlaceholderBackground() {
+            if (bgImage) return;
+            bCtx.fillStyle = '#f8fafc'; // light slate
+            bCtx.fillRect(0, 0, width, height);
+            
+            // Draw a subtle grid/margin line representing typical paper
+            bCtx.strokeStyle = '#e2e8f0';
+            bCtx.lineWidth = 1;
+            bCtx.strokeRect(20, 20, width - 40, height - 40);
+            
+            bCtx.fillStyle = '#94a3b8';
+            bCtx.font = '14px Inter';
+            bCtx.textAlign = 'center';
+            bCtx.fillText('No image uploaded. Showing spatial geometry of p-34.', width/2, height/2);
+        }
+
+        function populateSidebar() {
+            sidebarList.innerHTML = '';
+            semanticData.semantic_graph.page_elements.forEach(node => {
+                const colors = roleColors[node.semantic_role] || roleColors["Default"];
+                const el = document.createElement('div');
+                el.className = 'p-3 rounded-lg border cursor-pointer transition-all duration-200';
+                
+                // Set inactive styles
+                el.style.backgroundColor = 'rgba(15, 23, 42, 0.6)';
+                el.style.borderColor = '#1e293b';
+
+                el.innerHTML = `
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span class="flex items-center gap-2">
+                            <span class="flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold text-slate-900" style="background-color: ${colors.stroke}">${node.reading_order}</span>
+                            <span class="text-xs font-bold text-slate-200">${node.semantic_role}</span>
+                        </span>
+                        <span class="text-[9px] font-mono text-slate-500">${node.id}</span>
+                    </div>
+                    <div class="text-[10px] font-mono text-slate-400">
+                        [${node.bounding_box.join(', ')}]
+                    </div>
+                `;
+
+                // Interactive logic
+                el.addEventListener('mouseenter', () => {
+                    hoveredNodeId = node.id;
+                    el.style.backgroundColor = colors.fill;
+                    el.style.borderColor = colors.stroke;
+                    drawOverlay();
+                });
+                el.addEventListener('mouseleave', () => {
+                    hoveredNodeId = null;
+                    el.style.backgroundColor = 'rgba(15, 23, 42, 0.6)';
+                    el.style.borderColor = '#1e293b';
+                    drawOverlay();
+                });
+
+                sidebarList.appendChild(el);
+            });
+        }
+
+        function drawOverlay() {
+            oCtx.clearRect(0, 0, width, height);
+
+            const nodes = semanticData.semantic_graph.page_elements;
+
+            // 1. Draw connections (Arrows) first so they go under boxes
+            if (showArrows) {
+                oCtx.lineWidth = 2;
+                for (let i = 0; i < nodes.length - 1; i++) {
+                    const curr = nodes[i];
+                    const next = nodes[i+1];
+
+                    const cBox = curr.bounding_box;
+                    const nBox = next.bounding_box;
+
+                    // Calculate centers
+                    const cx = (cBox[0] + cBox[2]) / 2;
+                    const cy = (cBox[1] + cBox[3]) / 2;
+                    const nx = (nBox[0] + nBox[2]) / 2;
+                    const ny = (nBox[1] + nBox[3]) / 2;
+
+                    // Draw Line
+                    oCtx.beginPath();
+                    oCtx.moveTo(cx, cy);
+                    // Add a slight bezier curve for visual appeal
+                    oCtx.bezierCurveTo(cx, ny, nx, cy, nx, ny);
+                    
+                    // Highlight arrow if hovered
+                    if (hoveredNodeId === curr.id || hoveredNodeId === next.id) {
+                        oCtx.strokeStyle = 'rgba(244, 63, 94, 0.8)'; // Rose
+                        oCtx.setLineDash([]);
+                    } else {
+                        oCtx.strokeStyle = 'rgba(148, 163, 184, 0.3)'; // Slate
+                        oCtx.setLineDash([5, 5]);
+                    }
+                    oCtx.stroke();
+                }
+                oCtx.setLineDash([]); // Reset
+            }
+
+            // 2. Draw Bounding Boxes
+            nodes.forEach(node => {
+                const box = node.bounding_box;
+                const bw = box[2] - box[0];
+                const bh = box[3] - box[1];
+                const colors = roleColors[node.semantic_role] || roleColors["Default"];
+
+                // Determine styling based on hover state
+                const isHovered = hoveredNodeId === node.id;
+                
+                oCtx.fillStyle = isHovered ? colors.fill : 'rgba(255,255,255,0)';
+                oCtx.strokeStyle = isHovered ? '#fff' : colors.stroke;
+                oCtx.lineWidth = isHovered ? 3 : 2;
+
+                // Draw Box
+                oCtx.fillRect(box[0], box[1], bw, bh);
+                oCtx.strokeRect(box[0], box[1], bw, bh);
+
+                // Draw Badge
+                oCtx.fillStyle = colors.stroke;
+                const badgeRadius = 12;
+                oCtx.beginPath();
+                oCtx.arc(box[0], box[1], badgeRadius, 0, Math.PI * 2);
+                oCtx.fill();
+
+                oCtx.fillStyle = '#0f172a';
+                oCtx.font = 'bold 12px Inter';
+                oCtx.textAlign = 'center';
+                oCtx.textBaseline = 'middle';
+                oCtx.fillText(node.reading_order, box[0], box[1]);
+                
+                // Draw Label if hovered
+                if(isHovered) {
+                    oCtx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+                    const label = `${node.semantic_role} [${bw}x${bh}]`;
+                    oCtx.fillRect(box[0] + 16, box[1] - 10, oCtx.measureText(label).width + 10, 20);
+                    oCtx.fillStyle = colors.text;
+                    oCtx.textAlign = 'left';
+                    oCtx.fillText(label, box[0] + 20, box[1]);
+                }
+            });
+        }
+
+        function fitToScreen() {
+            const workspace = document.getElementById('workspace');
+            // Add padding to calculation
+            const availableWidth = workspace.clientWidth - 64; 
+            const availableHeight = workspace.clientHeight - 64;
+
+            const scaleX = availableWidth / width;
+            const scaleY = availableHeight / height;
+            const scale = Math.min(scaleX, scaleY, 1); // Don't scale up past 1x
+
+            container.style.transform = `scale(${scale})`;
+        }
+
+        document.getElementById('toggleArrows').addEventListener('click', (e) => {
+            showArrows = !showArrows;
+            e.target.classList.toggle('bg-slate-700');
+            e.target.classList.toggle('bg-indigo-600');
+            e.target.classList.toggle('text-slate-300');
+            e.target.classList.toggle('text-white');
+            drawOverlay();
+        });
+
+        document.getElementById('imageUpload').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    bgImage = img;
+                    bCtx.clearRect(0, 0, width, height);
+                    // Draw the uploaded image, scaled to the layout dimensions
+                    bCtx.drawImage(img, 0, 0, width, height);
+                }
+                img.src = event.target.result;
+            }
+            reader.readAsDataURL(file);
+        });
+
+        // Run
+        window.onload = init;
+    </script>
+</body>
+</html>
