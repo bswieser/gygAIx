@@ -37,7 +37,7 @@ The experiments can be grouped into three main categories:
 ### **Version 5: Rebuilding Tables from Bounding Boxes (Highly Notable)**
 
 * **Changes:** Completely abandons Docling's internal table logic. Instead, it extracts the raw bbox (bounding box) coordinates of every text element on the page. It then uses mathematical clustering (via a y\_tolerance threshold) to group elements into rows, and sorts them horizontally into columns.  
-* **Why it's notable:** PDF table extraction (even with AI tools) notoriously fails on edge cases. Building a geometric fallback is a brilliant, highly robust engineering choice.
+* **Why it's notable:** PDF table extraction (even with AI tools) notoriously fails on edge cases. Building a geometric fallback is a brilliant, highly robust engineering choice. *Testing confirmed this successfully aligned complex RPG tables (like the Monster Listing) perfectly.*
 
 ## **3\. Vision & Image Pipeline**
 
@@ -49,24 +49,35 @@ The experiments can be grouped into three main categories:
 ### **Version 7 & 8: Batch Processor & Organizer**
 
 * **Changes:** Automates the pipeline. Scans a directory for BOOKNAME-PAGE.png, creates organized subfolders (p-18/original, p-18/docling), moves files, and runs the image token optimizer. Safely handles cross-drive file migrations.  
-* **Why it's notable:** This bridges the gap between single-file experimentation and bulk processing an entire 300-page book.
+* **Why it's notable:** This bridges the gap between single-file experimentation and bulk processing an entire 300-page book. *Testing proved this effectively clamped token costs to 765 per page across 240+ pages.*
+
+## **🚨 Production Testing & Infrastructure Failsafes (New Findings)**
+
+Based on batch execution logs, the pipeline is structurally sound but vulnerable to infrastructure failures.
+
+* **The Local LLM Bottleneck:** During tests, a connection drop to the local Ollama instance (192.168.0.9) caused the script to stall. Because the script attempts a 30-second timeout for *every single text node*, a disconnected LLM turns a 10-second parse into a 26-minute infinite failure loop.  
+* **UI Deprecation:** The token optimizer UI uses a deprecated theme argument in the gr.Blocks() constructor that needs to be moved to .launch() for Gradio 6.0 compatibility.
 
 ## **🏆 Key Highlights & Recommendations for the Final Pipeline**
 
-### **1\. The Multi-Column Table Collapser (Strongly Recommended)**
+### **1\. Implement a Connection Failsafe (Priority Fix)**
+
+**Action:** The OCR pipeline must include a strike system. If requests.post to Ollama times out 3 times consecutively, the script should automatically toggle ENABLE\_OLLAMA\_CLEANING \= False and process the rest of the document with raw text to prevent catastrophic timeouts.
+
+### **2\. The Multi-Column Table Collapser (Strongly Recommended)**
 
 **Where to find it:** The Version 4 script (collapse\_multicol\_table).
 
-**Why use it:** LLMs hallucinate heavily when reading wide, multi-column tables (e.g., a d100 loot table split into 4 visual columns on a page). This script solves a major RAG (Retrieval-Augmented Generation) headache.
+**Why use it:** LLMs hallucinate heavily when reading wide, multi-column tables. Flattening these resolves a major RAG headache.
 
-### **2\. The Geometric Table Fallback (Crucial Consideration)**
+### **3\. The Geometric Table Fallback (Crucial Consideration)**
 
 **Where to find it:** The rebuild\_table\_from\_docling\_json script.
 
-**Why use it:** You should integrate this into your main pipeline as a try/except fallback. If Docling returns a garbled grid, trigger the bounding-box math to reconstruct the table visually.
+**Why use it:** Integrate this as a try/except fallback. If Docling returns a garbled grid, trigger the bounding-box math to reconstruct the table visually.
 
-### **3\. OCR Numeric Skips (Performance Win)**
+### **4\. OCR Numeric Skips (Performance Win)**
 
 **Where to find it:** The regex check if all(c in "0123456789-.,/%+\*() " for c in raw\_text):
 
-**Why use it:** Sending single numbers to a local LLM for "grammar cleaning" is a massive waste of compute. This one line will likely cut your processing time in half for table-heavy pages.
+**Why use it:** Bypassing the LLM for single numbers cuts processing time dramatically for table-heavy pages.
