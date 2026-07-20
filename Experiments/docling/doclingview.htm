@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Docling Document Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #f3f4f6; }
+        .drag-active { background-color: #e0e7ff; border-color: #4f46e5; }
+        .content-container > *:first-child { margin-top: 0; }
+    </style>
+</head>
+<body class="text-gray-800 font-sans antialiased min-h-screen flex flex-col items-center py-10 px-4">
+
+    <!-- Header & Uploader -->
+    <div class="w-full max-w-4xl bg-white shadow-lg rounded-xl overflow-hidden mb-8">
+        <div class="bg-indigo-600 text-white px-6 py-4">
+            <h1 class="text-2xl font-bold flex items-center">
+                <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                Docling JSON Reconstructor
+            </h1>
+            <p class="text-indigo-100 text-sm mt-1">Upload your DoclingDocument JSON file to render it into readable HTML.</p>
+        </div>
+        
+        <div class="p-6">
+            <div id="drop-zone" class="border-2 border-dashed border-gray-300 rounded-lg p-10 text-center transition-colors cursor-pointer hover:bg-gray-50">
+                <svg class="mx-auto h-12 w-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                <p class="text-gray-600 font-medium">Click to upload or drag and drop your .json file here</p>
+                <p class="text-sm text-gray-400 mt-1">Supports standard Docling outputs</p>
+                <input type="file" id="file-input" accept=".json" class="hidden">
+            </div>
+        </div>
+    </div>
+
+    <!-- Rendered Document View -->
+    <div id="document-viewer" class="w-full max-w-4xl bg-white shadow-lg rounded-xl overflow-hidden hidden">
+        <div class="border-b border-gray-200 bg-gray-50 px-8 py-4 flex justify-between items-center">
+            <div>
+                <h2 id="doc-name" class="text-xl font-bold text-gray-800">Document</h2>
+                <p id="doc-meta" class="text-xs text-gray-500 mt-1"></p>
+            </div>
+            <button onclick="window.print()" class="px-4 py-2 bg-white border border-gray-300 rounded shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                Print / Save PDF
+            </button>
+        </div>
+        
+        <!-- Rendered Content Goes Here -->
+        <div id="document-content" class="content-container p-8 md:p-12 text-lg">
+            <!-- Dynamic DOM generation -->
+        </div>
+
+        <!-- Detached Images Gallery (Fallback) -->
+        <div id="detached-images" class="hidden px-8 md:px-12 pb-12 pt-8 border-t-2 border-dashed border-gray-200 bg-gray-50">
+            <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                <svg class="w-5 h-5 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                Extracted Images Gallery
+            </h3>
+            <p class="text-sm text-gray-500 mb-6">These images were found inside the JSON data but weren't strictly linked to a specific text paragraph.</p>
+            <div id="detached-images-container" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Fallback images populate here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const docViewer = document.getElementById('document-viewer');
+        const docContent = document.getElementById('document-content');
+        const docName = document.getElementById('doc-name');
+        const docMeta = document.getElementById('doc-meta');
+        const detachedImages = document.getElementById('detached-images');
+        const detachedContainer = document.getElementById('detached-images-container');
+
+        // Setup Event Listeners for Drag & Drop
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-active');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-active'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-active');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) handleFile(e.target.files[0]);
+        });
+
+        function handleFile(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const json = JSON.parse(e.target.result);
+                    renderDoclingDocument(json);
+                } catch (err) {
+                    alert('Error parsing JSON. Check console for details.');
+                    console.error(err);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function renderDoclingDocument(doc) {
+            if (doc.schema_name !== 'DoclingDocument') {
+                alert('This JSON does not appear to be a valid DoclingDocument.');
+                return;
+            }
+
+            // Update Meta
+            docName.textContent = doc.name || 'Untitled Document';
+            docMeta.textContent = `Source: ${doc.origin?.filename || 'Unknown'} | Version: ${doc.version || 'N/A'}`;
+            docContent.innerHTML = ''; 
+            detachedContainer.innerHTML = '';
+            docViewer.classList.remove('hidden');
+            detachedImages.classList.add('hidden');
+
+            // --- 1. PRE-PROCESS: Extract ALL large strings (images) globally iteratively ---
+            let globalImagesPool = new Set();
+            let iterStack = [doc];
+            while (iterStack.length > 0) {
+                let current = iterStack.pop();
+                if (current && typeof current === 'object') {
+                    for (let key in current) {
+                        let val = current[key];
+                        // If it's a massive string, it is an image payload
+                        if (typeof val === 'string' && val.length > 1000) {
+                            globalImagesPool.add(val);
+                        } else if (typeof val === 'object' && val !== null) {
+                            iterStack.push(val);
+                        }
+                    }
+                }
+            }
+            let availableImages = Array.from(globalImagesPool);
+
+            function resolveRef(refPath) {
+                if (!refPath || !refPath.startsWith('#/')) return null;
+                const parts = refPath.replace('#/', '').split('/');
+                let current = doc;
+                for (const part of parts) {
+                    if (current[part] !== undefined) current = current[part];
+                    else return null;
+                }
+                return current;
+            }
+
+            function createNodeElement(node, parentContainer) {
+                let actualNode = node;
+                if (node.$ref) actualNode = resolveRef(node.$ref);
+                if (!actualNode) return;
+
+                if (actualNode.children && actualNode.children.length > 0) {
+                    const groupContainer = document.createElement('div');
+                    groupContainer.className = 'group-container mb-2';
+                    if (actualNode.label === 'list') {
+                        groupContainer.className = 'list-disc pl-8 mb-4 space-y-1';
+                    }
+                    actualNode.children.forEach(child => createNodeElement(child, groupContainer));
+                    parentContainer.appendChild(groupContainer);
+                    return;
+                }
+
+                const label = (actualNode.label || '').toLowerCase();
+                const text = actualNode.text || '';
+                let el = null;
+
+                switch (label) {
+                    case 'title':
+                    case 'document_title':
+                        el = document.createElement('h1');
+                        el.className = 'text-4xl font-extrabold text-gray-900 mt-8 mb-6 pb-2 border-b-2 border-gray-100';
+                        el.textContent = text;
+                        break;
+                        
+                    case 'section_header':
+                        el = document.createElement('h2');
+                        el.className = 'text-2xl font-bold text-gray-800 mt-8 mb-4';
+                        el.textContent = text;
+                        break;
+                        
+                    case 'page_header':
+                    case 'page_footer':
+                        el = document.createElement('div');
+                        el.className = 'text-xs text-gray-400 uppercase tracking-wider font-semibold my-2 italic';
+                        el.textContent = text;
+                        break;
+                        
+                    case 'text':
+                    case 'paragraph':
+                        el = document.createElement('p');
+                        el.className = 'mb-4 leading-relaxed text-gray-700';
+                        el.textContent = text;
+                        break;
+                        
+                    case 'list_item':
+                        el = document.createElement('div');
+                        el.className = parentContainer.classList.contains('list-disc') ? 'list-item text-gray-700' : 'pl-6 relative mb-2 text-gray-700 before:content-["•"] before:absolute before:left-2 before:text-gray-400';
+                        el.textContent = text;
+                        break;
+                        
+                    case 'picture':
+                    case 'image':
+                    case 'figure':
+                        el = document.createElement('figure');
+                        el.className = 'my-8 bg-gray-50 rounded-lg border border-gray-200 p-2 text-center flex flex-col items-center';
+                        
+                        let imgData = null;
+                        
+                        // Iteratively search JUST this node for a massive string
+                        let nodeStack = [actualNode];
+                        while(nodeStack.length > 0) {
+                            let curr = nodeStack.pop();
+                            if (curr && typeof curr === 'object') {
+                                for (let k in curr) {
+                                    let v = curr[k];
+                                    if (typeof v === 'string' && v.length > 1000) {
+                                        imgData = v;
+                                        break;
+                                    } else if (typeof v === 'object' && v !== null) {
+                                        nodeStack.push(v);
+                                    }
+                                }
+                            }
+                            if (imgData) break;
+                        }
+
+                        // If not found inside the node, steal one from the global pool!
+                        if (!imgData && availableImages.length > 0) {
+                            imgData = availableImages.shift(); 
+                        } else if (imgData) {
+                            // Remove from global pool so it doesn't render twice
+                            availableImages = availableImages.filter(img => img !== imgData);
+                        }
+                        
+                        if (imgData) {
+                            const img = document.createElement('img');
+                            const cleanStr = imgData.replace(/\s/g, ''); // Fix any bad characters
+                            img.src = cleanStr.startsWith('data:') ? cleanStr : `data:image/png;base64,${cleanStr}`;
+                            img.className = 'max-w-full h-auto rounded shadow-sm border border-gray-100';
+                            img.alt = 'Extracted document image';
+                            el.appendChild(img);
+                        } else {
+                            // If it absolutely fails, print the raw JSON of the node so we know why
+                            const placeholder = document.createElement('div');
+                            placeholder.className = 'py-12 text-gray-400 italic text-sm w-full px-4 text-left';
+                            placeholder.innerHTML = `[ Image rendering failed ]<br><pre class="mt-4 p-4 bg-gray-100 text-gray-600 rounded overflow-auto max-w-full text-xs">${JSON.stringify(actualNode, null, 2)}</pre>`;
+                            el.appendChild(placeholder);
+                        }
+                        
+                        if (text) {
+                            const figcaption = document.createElement('figcaption');
+                            figcaption.className = 'text-sm text-gray-500 mt-3';
+                            figcaption.textContent = text;
+                            el.appendChild(figcaption);
+                        }
+                        break;
+                        
+                    case 'table':
+                        el = document.createElement('div');
+                        el.className = 'overflow-x-auto my-6 border border-gray-200 rounded-lg';
+                        el.innerHTML = `<div class="p-4 bg-yellow-50 text-yellow-800 text-sm whitespace-pre-wrap font-mono"><span class="font-bold block mb-2">Table Data:</span>${text}</div>`;
+                        break;
+                        
+                    default:
+                        if (text) {
+                            el = document.createElement('div');
+                            el.className = 'mb-2 text-gray-600';
+                            el.textContent = text;
+                        }
+                        break;
+                }
+
+                if (el) parentContainer.appendChild(el);
+            }
+
+            // 2. RENDER DOCUMENT
+            if (doc.body && doc.body.children) {
+                const rootFragment = document.createDocumentFragment();
+                doc.body.children.forEach(childRef => createNodeElement(childRef, rootFragment));
+                docContent.appendChild(rootFragment);
+            } else {
+                docContent.innerHTML = '<p class="text-red-500 font-bold p-4 bg-red-50 rounded">Error: Could not locate document body.</p>';
+            }
+
+            // 3. RENDER DETACHED IMAGES
+            // If there are still images in the global pool that weren't caught by a 'picture' node, render them at the bottom.
+            if (availableImages.length > 0) {
+                availableImages.forEach(imgData => {
+                    const img = document.createElement('img');
+                    const cleanStr = imgData.replace(/\s/g, '');
+                    img.src = cleanStr.startsWith('data:') ? cleanStr : `data:image/png;base64,${cleanStr}`;
+                    img.className = 'w-full h-auto rounded shadow border border-gray-200';
+                    detachedContainer.appendChild(img);
+                });
+                detachedImages.classList.remove('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
