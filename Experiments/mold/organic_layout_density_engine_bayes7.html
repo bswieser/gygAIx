@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Organic Layout Density Engine</title>
+    <style>
+        :root {
+            --bg-main: #121212;
+            --bg-panel: #1e1e1e;
+            --accent: #4ade80;
+            --accent-hover: #22c55e;
+            --text-main: #e2e8f0;
+            --text-muted: #94a3b8;
+            --border: #334155;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 20px;
+            width: 100%;
+            max-width: 1600px;
+            align-items: start;
+        }
+
+        .panel {
+            background-color: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            accent-color: var(--accent);
+        }
+
+        .val-display {
+            font-family: monospace;
+            background: var(--bg-main);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            min-width: 50px;
+            text-align: center;
+            border: 1px solid var(--border);
+        }
+
+        input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            background: var(--bg-main);
+            border: 1px dashed var(--border);
+            border-radius: 6px;
+            color: var(--text-main);
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+
+        button {
+            width: 100%;
+            background-color: var(--accent);
+            color: #000;
+            border: none;
+            padding: 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 10px;
+            font-size: 0.95rem;
+        }
+
+        button:hover:not(:disabled) {
+            background-color: var(--accent-hover);
+        }
+
+        button:disabled {
+            background-color: #333;
+            color: #666;
+            cursor: not-allowed;
+        }
+
+        .workspace {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            align-items: center;
+        }
+
+        canvas.main-canvas {
+            background: #000;
+            max-width: 100%;
+            max-height: 80vh;
+            object-fit: contain;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+            border: 1px solid var(--border);
+        }
+
+        canvas.histogram {
+            width: 100%;
+            height: 120px;
+            background: var(--bg-main);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 250px;
+            background: var(--bg-main);
+            color: var(--accent);
+            border: 1px solid var(--border);
+            padding: 12px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.85rem;
+            border-radius: 6px;
+            resize: vertical;
+            white-space: pre;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            background: rgba(74, 222, 128, 0.1);
+            color: var(--accent);
+            border: 1px solid rgba(74, 222, 128, 0.2);
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 15px;
+            text-align: center;
+            width: 100%;
+        }
+
+        .bayes-panel {
+            display: none;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        
+        .bayes-panel h3 {
+            font-weight: 600;
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+
+        @media (max-width: 1000px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Density-Based Layout Engine</h1>
+    <p>Upload a document image. Adjust the brush to find text blocks via localized density.</p>
+</div>
+
+<div class="dashboard">
+    <div class="panel">
+        <div class="status-badge" id="statusBadge">Awaiting Image</div>
+        
+        <div class="control-group">
+            <label>1. Upload Document Image</label>
+            <input type="file" id="imageInput" accept="image/*">
+        </div>
+
+        <div class="control-group">
+            <label>2. Brush Radius (px)</label>
+            <div class="slider-container">
+                <input type="range" id="brushSlider" min="2" max="50" value="8">
+                <div class="val-display" id="brushVal">8</div>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>3. Density Threshold (%)</label>
+            <div class="slider-container">
+                <input type="range" id="densitySlider" min="1" max="100" value="15">
+                <div class="val-display" id="densityVal">15%</div>
+            </div>
+            <canvas id="histCanvas" class="histogram"></canvas>
+        </div>
+
+        <div class="control-group" id="actionButtons">
+            <button id="btnStart" disabled>1. Start Mold Growth</button>
+            <button id="btnVectorize" disabled style="background-color: transparent; border: 1px solid var(--accent); color: var(--accent);">
+                2. Extract Initial Rects (Pre-Merge)
+            </button>
+            
+            <!-- STAGE 1: MACRO PAGE PROFILER -->
+            <div id="pageProfilerPanel" class="bayes-panel" style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3);">
+                <h3 style="color: #60a5fa;">🧠 Stage 1: Page-Level Router</h3>
+                <div id="pageStats" style="font-family: monospace; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px;"></div>
+                <div style="font-size: 0.95rem; margin-bottom: 15px;">Prediction: <strong id="pagePrediction" style="color: #fff; font-size: 1.1rem;">UNKNOWN</strong></div>
+                <label style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 5px; display: block;">Confirm path to train & auto-execute:</label>
+                <div style="display: flex; gap: 5px;">
+                    <button id="btnTrainImage" style="background: #ef4444; font-size: 0.8rem; padding: 8px; color: white;">Image</button>
+                    <button id="btnTrainTable" style="background: #3b82f6; font-size: 0.8rem; padding: 8px; color: white;">Table</button>
+                    <button id="btnTrainLayout" style="background: #10b981; font-size: 0.8rem; padding: 8px; color: white;">Layout</button>
+                </div>
+            </div>
+
+            <div id="physicsControls" style="display: none; gap: 10px; margin-top: 10px;">
+                <button id="btnStep" disabled style="background-color: #3b82f6; color: white;">3. Step Growth</button>
+                <button id="btnAuto" disabled style="background-color: #8b5cf6; color: white;">Auto Grow</button>
+            </div>
+            
+            <!-- STAGE 2: MICRO LAYOUT PROFILER -->
+            <div id="layoutProfilerPanel" class="bayes-panel" style="background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.3);">
+                <h3 style="color: #a78bfa;">🧠 Stage 2: Merge Strategy</h3>
+                <div id="layoutStats" style="font-family: monospace; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px;"></div>
+                <div style="font-size: 0.95rem; margin-bottom: 15px;">Suggested Tuning: <strong id="layoutPrediction" style="color: #fff; font-size: 1.1rem;">UNKNOWN</strong></div>
+                <label style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 5px; display: block;">Select strategy (click to preview & swap):</label>
+                <div style="display: flex; gap: 5px;">
+                    <button id="btnMergeAggressive" style="background: #10b981; font-size: 0.8rem; padding: 8px; color: white;">Aggressive</button>
+                    <button id="btnMergeStandard" style="background: #f59e0b; font-size: 0.8rem; padding: 8px; color: white;">Standard</button>
+                    <button id="btnMergeLight" style="background: #64748b; font-size: 0.8rem; padding: 8px; color: white;">Light</button>
+                </div>
+            </div>
+
+            <div id="finalPassButtons" style="display: none; flex-direction: column; gap: 8px; margin-top: 15px; border-top: 1px solid var(--border); padding-top: 15px;">
+                <label style="color: var(--accent); font-size: 0.85rem;">4. Final Grouping Tools</label>
+                <button id="btnMaster" style="background-color: #10b981; color: #fff; font-size: 0.85rem;">Exp 1: Master Heuristic Combine</button>
+                <button id="btnE3" style="background-color: #8b5cf6; color: #fff; font-size: 0.85rem;">Exp 2: Elastic Tri-Split Banding (Table)</button>
+                <div id="fitnessScore" style="color: var(--accent); font-weight: bold; font-size: 0.85rem; text-align: center; margin-top: 5px;"></div>
+            </div>
+        </div>
+
+        <div class="control-group" style="margin-top: 10px;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="chkOverlay" checked style="width: auto; margin: 0;">
+                Show Boxes Over Original Image
+            </label>
+        </div>
+        
+        <div class="control-group">
+            <label>Extraction Output</label>
+            <textarea id="jsonOutput" placeholder="Layout Polygons JSON will appear here..." readonly></textarea>
+        </div>
+    </div>
+
+    <div class="panel workspace">
+        <div style="display: flex; gap: 15px; margin-bottom: 10px; font-size: 0.85rem; justify-content: center; width: 100%;">
+            <span style="color: #4ade80;">🟩 Text Paragraph</span>
+            <span style="color: #ef4444;">🟥 Image/Graphic</span>
+            <span style="color: #3b82f6;">🟦 Sparse Table</span>
+        </div>
+        <canvas id="mainCanvas" class="main-canvas"></canvas>
+    </div>
+</div>
+
+<script>
+    const mainCanvas = document.getElementById('mainCanvas');
+    const ctx = mainCanvas.getContext('2d', { willReadFrequently: true });
+    
+    const histCanvas = document.getElementById('histCanvas');
+    const histCtx = histCanvas.getContext('2d');
+
+    const imageInput = document.getElementById('imageInput');
+    const brushSlider = document.getElementById('brushSlider');
+    const brushVal = document.getElementById('brushVal');
+    const densitySlider = document.getElementById('densitySlider');
+    const densityVal = document.getElementById('densityVal');
+    
+    const btnStart = document.getElementById('btnStart');
+    const btnVectorize = document.getElementById('btnVectorize');
+    const btnStep = document.getElementById('btnStep');
+    const btnAuto = document.getElementById('btnAuto');
+    const chkOverlay = document.getElementById('chkOverlay');
+    const statusBadge = document.getElementById('statusBadge');
+    const jsonOutput = document.getElementById('jsonOutput');
+
+    let originalImgData, currentImgData;
+    let imgWidth = 0, imgHeight = 0;
+    
+    let grayscale = [];
+    let integralImage = []; 
+    let stateMap = []; 
+    let otsuThreshold = 128;
+    
+    let whiteQueue = [];
+    let blackQueue = [];
+    let isAnimating = false;
+    let animationId = null;
+    let isRectAnimating = false;
+    let rectAnimId = null;
+    
+    let activeRegions = [];
+    let watershedBackup = [];
+    let currentFeatures = {}; 
+
+    class Region {
+        constructor(x, y, w, h, children = 1) {
+            this.x = x; this.y = y; this.w = w; this.h = h;
+            this.growT = true; this.growB = true;
+            this.growL = true; this.growR = true;
+            this.children = children;
+            this.color = `hsl(${Math.floor(Math.random() * 360)}, 80%, 50%)`;
+            this.classification = "Unknown";
+            this.densityValue = 0;
+        }
+    }
+
+    const MAX_DIMENSION = 1024;
+    const PIXELS_PER_FRAME = 15000; 
+
+    brushSlider.addEventListener('input', (e) => brushVal.innerText = e.target.value);
+    densitySlider.addEventListener('input', (e) => densityVal.innerText = e.target.value + '%');
+
+    function setStatus(msg, isError = false) {
+        statusBadge.innerText = msg;
+        statusBadge.style.color = isError ? '#f87171' : 'var(--accent)';
+        statusBadge.style.background = isError ? 'rgba(248, 113, 113, 0.1)' : 'rgba(74, 222, 128, 0.1)';
+        statusBadge.style.borderColor = isError ? 'rgba(248, 113, 113, 0.2)' : 'rgba(74, 222, 128, 0.2)';
+    }
+
+    let defaultPageBayes = {
+        "Image":  { prior: 1, feats: { countLow: 2, countMed: 0, countHigh: 0, sizeLow: 0, sizeMed: 0, sizeHigh: 2, denLow: 0, denMed: 1, denHigh: 2 } },
+        "Table":  { prior: 1, feats: { countLow: 0, countMed: 1, countHigh: 2, sizeLow: 2, sizeMed: 0, sizeHigh: 0, denLow: 2, denMed: 1, denHigh: 0 } },
+        "Layout": { prior: 1, feats: { countLow: 0, countMed: 2, countHigh: 1, sizeLow: 1, sizeMed: 2, sizeHigh: 0, denLow: 1, denMed: 2, denHigh: 1 } }
+    };
+    
+    let defaultLayoutBayes = {
+        "Aggressive": { prior: 1, feats: { countLow: 0, countMed: 1, countHigh: 2, denLow: 0, denMed: 2, denHigh: 1 } },
+        "Standard":   { prior: 1, feats: { countLow: 1, countMed: 2, countHigh: 1, denLow: 1, denMed: 2, denHigh: 1 } },
+        "Light":      { prior: 1, feats: { countLow: 2, countMed: 1, countHigh: 0, denLow: 2, denMed: 0, denHigh: 0 } } 
+    };
+
+    let pageBayesModel = JSON.parse(localStorage.getItem('densityEnginePageBayes')) || defaultPageBayes;
+    let layoutBayesModel = JSON.parse(localStorage.getItem('densityEngineLayoutBayes')) || defaultLayoutBayes;
+
+    imageInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => processLoadedImage(img);
+            img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+
+    function processLoadedImage(img) {
+        if (animationId) cancelAnimationFrame(animationId);
+        if (rectAnimId) cancelAnimationFrame(rectAnimId);
+        isAnimating = false;
+        isRectAnimating = false;
+
+        let scale = Math.min(MAX_DIMENSION / img.width, MAX_DIMENSION / img.height, 1);
+        imgWidth = Math.floor(img.width * scale);
+        imgHeight = Math.floor(img.height * scale);
+        
+        mainCanvas.width = imgWidth;
+        mainCanvas.height = imgHeight;
+        
+        ctx.drawImage(img, 0, 0, imgWidth, imgHeight);
+        originalImgData = ctx.getImageData(0, 0, imgWidth, imgHeight);
+        currentImgData = ctx.getImageData(0, 0, imgWidth, imgHeight);
+        
+        let totalPixels = imgWidth * imgHeight;
+        grayscale = new Uint8Array(totalPixels);
+        let histogram = new Array(256).fill(0);
+        
+        for (let i = 0; i < totalPixels; i++) {
+            let r = originalImgData.data[i * 4];
+            let g = originalImgData.data[i * 4 + 1];
+            let b = originalImgData.data[i * 4 + 2];
+            let lum = Math.floor(0.299 * r + 0.587 * g + 0.114 * b);
+            grayscale[i] = lum;
+            histogram[lum]++;
+        }
+
+        otsuThreshold = calculateOtsuThreshold(histogram, totalPixels);
+        drawHistogram(histogram, otsuThreshold);
+        buildIntegralImage();
+
+        setStatus(`Ready: ${imgWidth}x${imgHeight}`);
+        btnStart.disabled = false;
+        btnVectorize.disabled = true;
+        btnStep.disabled = true;
+        btnAuto.disabled = true;
+        
+        document.getElementById('physicsControls').style.display = 'none';
+        document.getElementById('pageProfilerPanel').style.display = 'none';
+        document.getElementById('layoutProfilerPanel').style.display = 'none';
+        document.getElementById('finalPassButtons').style.display = 'none';
+        jsonOutput.value = "";
+    }
+
+    function calculateOtsuThreshold(histogram, totalPixels) {
+        let sum = 0;
+        for (let i = 0; i < 256; i++) sum += i * histogram[i];
+        let sumB = 0, wB = 0, wF = 0, varMax = 0, threshold = 0;
+        for (let t = 0; t < 256; t++) {
+            wB += histogram[t];
+            if (wB === 0) continue;
+            wF = totalPixels - wB;
+            if (wF === 0) break;
+            sumB += t * histogram[t];
+            let mB = sumB / wB;
+            let mF = (sum - sumB) / wF;
+            let varBetween = wB * wF * (mB - mF) * (mB - mF);
+            if (varBetween > varMax) { varMax = varBetween; threshold = t; }
+        }
+        return threshold;
+    }
+
+    function drawHistogram(histogram, threshold) {
+        histCanvas.width = histCanvas.offsetWidth || 300;
+        histCanvas.height = histCanvas.offsetHeight || 120;
+        let maxVal = Math.max(...histogram);
+        let w = histCanvas.width;
+        let h = histCanvas.height;
+        histCtx.clearRect(0, 0, w, h);
+        histCtx.fillStyle = '#64748b';
+        for (let i = 0; i < 256; i++) {
+            let x = (i / 256) * w;
+            let barH = (histogram[i] / maxVal) * (h - 10);
+            histCtx.fillRect(x, h - barH, w / 256 + 1, barH);
+        }
+        let threshX = (threshold / 256) * w;
+        histCtx.strokeStyle = '#ef4444';
+        histCtx.lineWidth = 2;
+        histCtx.beginPath();
+        histCtx.moveTo(threshX, 0);
+        histCtx.lineTo(threshX, h);
+        histCtx.stroke();
+    }
+
+    function buildIntegralImage() {
+        integralImage = new Int32Array(imgWidth * imgHeight);
+        for (let y = 0; y < imgHeight; y++) {
+            for (let x = 0; x < imgWidth; x++) {
+                let idx = y * imgWidth + x;
+                let isInk = grayscale[idx] < otsuThreshold ? 1 : 0;
+                let A = (x > 0 && y > 0) ? integralImage[(y - 1) * imgWidth + (x - 1)] : 0;
+                let B = (y > 0) ? integralImage[(y - 1) * imgWidth + x] : 0;
+                let C = (x > 0) ? integralImage[y * imgWidth + (x - 1)] : 0;
+                integralImage[idx] = isInk + B + C - A;
+            }
+        }
+    }
+
+    function getBrushDensity(x, y, radius) {
+        let x1 = Math.max(0, x - radius);
+        let y1 = Math.max(0, y - radius);
+        let x2 = Math.min(imgWidth - 1, x + radius);
+        let y2 = Math.min(imgHeight - 1, y + radius);
+        let A = (x1 > 0 && y1 > 0) ? integralImage[(y1 - 1) * imgWidth + (x1 - 1)] : 0;
+        let B = (y1 > 0) ? integralImage[(y1 - 1) * imgWidth + x2] : 0;
+        let C = (x1 > 0) ? integralImage[y2 * imgWidth + (x1 - 1)] : 0;
+        let D = integralImage[y2 * imgWidth + x2];
+        let inkCount = D - B - C + A;
+        let totalArea = (x2 - x1 + 1) * (y2 - y1 + 1);
+        return totalArea > 0 ? inkCount / totalArea : 0;
+    }
+
+    function getRegionInkDensity(x, y, w, h) {
+        let x1 = Math.floor(Math.max(0, x)), y1 = Math.floor(Math.max(0, y));
+        let x2 = Math.floor(Math.min(imgWidth - 1, x + w)), y2 = Math.floor(Math.min(imgHeight - 1, y + h));
+        if (x1 >= x2 || y1 >= y2) return 0;
+        let A = (x1 > 0 && y1 > 0) ? integralImage[(y1 - 1) * imgWidth + (x1 - 1)] : 0;
+        let B = (y1 > 0) ? integralImage[(y1 - 1) * imgWidth + x2] : 0;
+        let C = (x1 > 0) ? integralImage[y2 * imgWidth + (x1 - 1)] : 0;
+        let D = integralImage[y2 * imgWidth + x2];
+        let inkCount = D - B - C + A;
+        let totalArea = (x2 - x1 + 1) * (y2 - y1 + 1);
+        return totalArea > 0 ? inkCount / totalArea : 0;
+    }
+
+    btnStart.addEventListener('click', () => {
+        if (!originalImgData) return;
+        ctx.putImageData(originalImgData, 0, 0);
+        currentImgData = ctx.getImageData(0, 0, imgWidth, imgHeight);
+        stateMap = new Uint8Array(imgWidth * imgHeight);
+        whiteQueue = [];
+        blackQueue = [];
+        
+        let radius = parseInt(brushSlider.value, 10);
+        let targetDensity = parseInt(densitySlider.value, 10) / 100.0;
+        setStatus("Seeding molds...");
+        
+        const step = Math.max(2, Math.floor(radius / 2));
+        for (let y = step; y < imgHeight; y += step) {
+            for (let x = step; x < imgWidth; x += step) {
+                let density = getBrushDensity(x, y, radius);
+                if (density < targetDensity) {
+                    whiteQueue.push({x, y});
+                    stateMap[y * imgWidth + x] = 1;
+                } else if (density >= targetDensity) {
+                    blackQueue.push({x, y});
+                    stateMap[y * imgWidth + x] = 2;
+                }
+            }
+        }
+        
+        btnStart.disabled = true;
+        btnVectorize.disabled = true;
+        isAnimating = true;
+        setStatus("Molds are consuming layout...");
+        animationId = requestAnimationFrame(() => animateGrowth(radius, targetDensity));
+    });
+
+    function processQueue(queue, moldType, radius, targetDensity) {
+        let processed = 0;
+        let newQueue = [];
+        const dirs = [[-1,-1], [0,-1], [1,-1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
+        let isWhite = (moldType === 1);
+        let pxData = currentImgData.data;
+
+        if(queue.length > 100) {
+           for(let i = queue.length - 1; i > queue.length - 20; i--) {
+               let j = Math.floor(Math.random() * (i + 1));
+               [queue[i], queue[j]] = [queue[j], queue[i]];
+           }
+        }
+
+        while (queue.length > 0 && processed < PIXELS_PER_FRAME / 2) {
+            let p = queue.pop();
+            let pxIdx = (p.y * imgWidth + p.x) * 4;
+            pxData[pxIdx] = isWhite ? 255 : 0; 
+            pxData[pxIdx+1] = isWhite ? 255 : 0; 
+            pxData[pxIdx+2] = isWhite ? 255 : 0; 
+            pxData[pxIdx+3] = 255;               
+
+            for (let i = 0; i < dirs.length; i++) {
+                let nx = p.x + dirs[i][0], ny = p.y + dirs[i][1];
+                if (nx >= 0 && nx < imgWidth && ny >= 0 && ny < imgHeight) {
+                    let nMapIdx = ny * imgWidth + nx;
+                    if (stateMap[nMapIdx] === 0) {
+                        let density = getBrushDensity(nx, ny, radius);
+                        if (isWhite && density < targetDensity) {
+                            stateMap[nMapIdx] = 1; newQueue.push({x: nx, y: ny});
+                        } else if (!isWhite && density >= targetDensity) {
+                            stateMap[nMapIdx] = 2; newQueue.push({x: nx, y: ny});
+                        }
+                    }
+                }
+            }
+            processed++;
+        }
+        return queue.concat(newQueue);
+    }
+
+    function animateGrowth(radius, targetDensity) {
+        if (!isAnimating) return;
+        whiteQueue = processQueue(whiteQueue, 1, radius, targetDensity);
+        blackQueue = processQueue(blackQueue, 2, radius, targetDensity);
+        ctx.putImageData(currentImgData, 0, 0);
+
+        if (whiteQueue.length === 0 && blackQueue.length === 0) {
+            isAnimating = false;
+            setStatus("Consumption complete. Ready for Initial Extraction.");
+            btnVectorize.disabled = false;
+        } else {
+            animationId = requestAnimationFrame(() => animateGrowth(radius, targetDensity));
+        }
+    }
+
+    btnVectorize.addEventListener('click', () => {
+        setStatus("Extracting initial atomic regions...");
+        let visited = new Uint8Array(imgWidth * imgHeight);
+        activeRegions = [];
+        let brushRad = parseInt(brushSlider.value, 10);
+
+        for (let y = 0; y < imgHeight; y++) {
+            for (let x = 0; x < imgWidth; x++) {
+                let idx = y * imgWidth + x;
+                if (stateMap[idx] === 2 && visited[idx] === 0) {
+                    let minX = x, maxX = x, minY = y, maxY = y;
+                    let stack = [{x, y}];
+                    visited[idx] = 1;
+                    let area = 0;
+                    
+                    while (stack.length > 0) {
+                        let p = stack.pop(); area++;
+                        if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+                        if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+                        
+                        const dirs = [[0,-1], [0,1], [-1,0], [1,0]];
+                        for (let i = 0; i < dirs.length; i++) {
+                            let nx = p.x + dirs[i][0], ny = p.y + dirs[i][1];
+                            if (nx >= 0 && nx < imgWidth && ny >= 0 && ny < imgHeight) {
+                                let nIdx = ny * imgWidth + nx;
+                                if (stateMap[nIdx] === 2 && visited[nIdx] === 0) {
+                                    visited[nIdx] = 1; stack.push({x: nx, y: ny});
+                                }
+                            }
+                        }
+                    }
+                    if (area > (brushRad * 2)) {
+                        activeRegions.push(new Region(minX, minY, (maxX - minX) + 1, (maxY - minY) + 1, 1));
+                    }
+                }
+            }
+        }
+        
+        // Pre-Merge of touching artifacts
+        let initialMerging = true;
+        while(initialMerging) {
+            initialMerging = false;
+            for (let i = 0; i < activeRegions.length; i++) {
+                for (let j = i + 1; j < activeRegions.length; j++) {
+                    let r1 = activeRegions[i], r2 = activeRegions[j];
+                    if (r1.x <= r2.x + r2.w && r1.x + r1.w >= r2.x && r1.y <= r2.y + r2.h && r1.y + r1.h >= r2.y) {
+                        let minX = Math.min(r1.x, r2.x), minY = Math.min(r1.y, r2.y);
+                        let maxX = Math.max(r1.x + r1.w, r2.x + r2.w), maxY = Math.max(r1.y + r1.h, r2.y + r2.h);
+                        activeRegions[i] = new Region(minX, minY, maxX - minX, maxY - minY, r1.children + r2.children);
+                        activeRegions.splice(j, 1);
+                        initialMerging = true; break;
+                    }
+                }
+                if (initialMerging) break;
+            }
+        }
+
+        drawRegions(activeRegions);
+        btnVectorize.disabled = true;
+        profilePageAndPredict();
+    });
+
+    function profilePageAndPredict() {
+        let rectCount = activeRegions.length;
+        let totalArea = imgWidth * imgHeight;
+        let maxRectArea = 0;
+        let totalInkArea = 0;
+        
+        activeRegions.forEach(r => {
+            let area = r.w * r.h;
+            if (area > maxRectArea) maxRectArea = area;
+            totalInkArea += getRegionInkDensity(r.x, r.y, r.w, r.h) * area;
+        });
+        
+        let maxSizeRatio = maxRectArea / totalArea;
+        let overallAvgDensity = totalInkArea / totalArea;
+        
+        currentFeatures = {
+            countStr: rectCount < 15 ? 'countLow' : (rectCount < 40 ? 'countMed' : 'countHigh'),
+            sizeStr:  maxSizeRatio < 0.1 ? 'sizeLow' : (maxSizeRatio < 0.4 ? 'sizeMed' : 'sizeHigh'),
+            denStr:   overallAvgDensity < 0.1 ? 'denLow' : (overallAvgDensity < 0.3 ? 'denMed' : 'denHigh')
+        };
+        
+        document.getElementById('pageStats').innerHTML = 
+            `Atoms: ${rectCount} (${currentFeatures.countStr})<br>` +
+            `Max Blob: ${(maxSizeRatio*100).toFixed(1)}% (${currentFeatures.sizeStr})<br>` +
+            `Overall Ink: ${(overallAvgDensity*100).toFixed(1)}% (${currentFeatures.denStr})`;
+
+        let bestGuess = "Layout";
+        let bestScore = -1;
+        
+        for (const [strategy, data] of Object.entries(pageBayesModel)) {
+            let score = data.prior * (data.feats[currentFeatures.countStr] + 0.1) * (data.feats[currentFeatures.sizeStr] + 0.1) * (data.feats[currentFeatures.denStr] + 0.1);
+            if (score > bestScore) {
+                bestScore = score; bestGuess = strategy;
+            }
+        }
+        
+        document.getElementById('pagePrediction').innerText = bestGuess;
+        document.getElementById('pageProfilerPanel').style.display = 'block';
+        setStatus(`Initial Pass complete. Engine predicts it's a ${bestGuess}. Review to route.`);
+    }
+
+    document.getElementById('btnTrainImage').addEventListener('click', () => executePagePath('Image'));
+    document.getElementById('btnTrainTable').addEventListener('click', () => executePagePath('Table'));
+    document.getElementById('btnTrainLayout').addEventListener('click', () => executePagePath('Layout'));
+
+    function executePagePath(strategy) {
+        pageBayesModel[strategy].prior++;
+        pageBayesModel[strategy].feats[currentFeatures.countStr]++;
+        pageBayesModel[strategy].feats[currentFeatures.sizeStr]++;
+        pageBayesModel[strategy].feats[currentFeatures.denStr]++;
+        localStorage.setItem('densityEnginePageBayes', JSON.stringify(pageBayesModel));
+        
+        document.getElementById('pageProfilerPanel').style.display = 'none';
+        setStatus(`Routing to ${strategy} Pipeline...`);
+
+        if (strategy === "Image") {
+            activeRegions = [new Region(0, 0, imgWidth, imgHeight, activeRegions.length)];
+            finalizeExtraction("Image Bounding Pass");
+        } else if (strategy === "Table") {
+            runTriSplitBanding(); 
+        } else if (strategy === "Layout") {
+            document.getElementById('physicsControls').style.display = 'flex';
+            btnStep.disabled = false;
+            btnAuto.disabled = false;
+            btnAuto.click();
+        }
+    }
+
+    function intersects(r1, r2) {
+        return !(r1.x + r1.w <= r2.x || r1.x >= r2.x + r2.w || r1.y + r1.h <= r2.y || r1.y >= r2.y + r2.h);
+    }
+
+    function performPhysicsTick() {
+        let hasGrowth = false;
+        let speed = 2; 
+
+        for (let i = activeRegions.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [activeRegions[i], activeRegions[j]] = [activeRegions[j], activeRegions[i]];
+        }
+
+        for (let i = 0; i < activeRegions.length; i++) {
+            let r = activeRegions[i];
+            
+            if (r.growL) {
+                let swept = { x: r.x - speed, y: r.y, w: speed, h: r.h };
+                if (swept.x <= 0) { r.w += r.x; r.x = 0; r.growL = false; hasGrowth = true; 
+                } else {
+                    let hits = activeRegions.filter(o => o !== r && intersects(swept, o));
+                    if (hits.length === 0) { r.x -= speed; r.w += speed; hasGrowth = true;
+                    } else {
+                        let maxHitX = 0;
+                        for (let hit of hits) maxHitX = Math.max(maxHitX, hit.x + hit.w);
+                        r.w += (r.x - maxHitX); r.x = maxHitX; r.growL = false; hasGrowth = true;
+                    }
+                }
+            }
+            if (r.growR) {
+                let swept = { x: r.x + r.w, y: r.y, w: speed, h: r.h };
+                if (swept.x + swept.w >= imgWidth) { r.w = imgWidth - r.x; r.growR = false; hasGrowth = true; 
+                } else {
+                    let hits = activeRegions.filter(o => o !== r && intersects(swept, o));
+                    if (hits.length === 0) { r.w += speed; hasGrowth = true;
+                    } else {
+                        let minHitX = imgWidth;
+                        for (let hit of hits) minHitX = Math.min(minHitX, hit.x);
+                        r.w = minHitX - r.x; r.growR = false; hasGrowth = true;
+                    }
+                }
+            }
+            if (r.growT) {
+                let swept = { x: r.x, y: r.y - speed, w: r.w, h: speed };
+                if (swept.y <= 0) { r.h += r.y; r.y = 0; r.growT = false; hasGrowth = true; 
+                } else {
+                    let hits = activeRegions.filter(o => o !== r && intersects(swept, o));
+                    if (hits.length === 0) { r.y -= speed; r.h += speed; hasGrowth = true;
+                    } else {
+                        let maxHitY = 0;
+                        for (let hit of hits) maxHitY = Math.max(maxHitY, hit.y + hit.h);
+                        r.h += (r.y - maxHitY); r.y = maxHitY; r.growT = false; hasGrowth = true;
+                    }
+                }
+            }
+            if (r.growB) {
+                let swept = { x: r.x, y: r.y + r.h, w: r.w, h: speed };
+                if (swept.y + swept.h >= imgHeight) { r.h = imgHeight - r.y; r.growB = false; hasGrowth = true; 
+                } else {
+                    let hits = activeRegions.filter(o => o !== r && intersects(swept, o));
+                    if (hits.length === 0) { r.h += speed; hasGrowth = true;
+                    } else {
+                        let minHitY = imgHeight;
+                        for (let hit of hits) minHitY = Math.min(minHitY, hit.y);
+                        r.h = minHitY - r.y; r.growB = false; hasGrowth = true;
+                    }
+                }
+            }
+        }
+        drawRegions(activeRegions);
+        return hasGrowth;
+    }
+
+    btnStep.addEventListener('click', () => performPhysicsTick());
+    btnAuto.addEventListener('click', () => {
+        isRectAnimating = true;
+        btnStep.disabled = true;
+        btnAuto.disabled = true;
+        rectAnimId = requestAnimationFrame(animateRectsLoop);
+    });
+
+    function animateRectsLoop() {
+        if (!isRectAnimating) return;
+        let hasGrowth = performPhysicsTick();
+
+        if (hasGrowth) {
+            rectAnimId = requestAnimationFrame(animateRectsLoop);
+        } else {
+            isRectAnimating = false;
+            watershedBackup = activeRegions.map(r => new Region(r.x, r.y, r.w, r.h, r.children));
+            profileLayoutAndPredict();
+        }
+    }
+
+    function profileLayoutAndPredict() {
+        let blockCount = activeRegions.length;
+        let overallAvgDensity = activeRegions.reduce((sum, r) => sum + getRegionInkDensity(r.x, r.y, r.w, r.h), 0) / blockCount;
+        
+        currentFeatures = {
+            countStr: blockCount < 10 ? 'countLow' : (blockCount < 30 ? 'countMed' : 'countHigh'),
+            denStr:   overallAvgDensity < 0.1 ? 'denLow' : (overallAvgDensity < 0.25 ? 'denMed' : 'denHigh')
+        };
+        
+        document.getElementById('layoutStats').innerHTML = 
+            `Tessellated Blocks: ${blockCount} (${currentFeatures.countStr})<br>` +
+            `Avg Density: ${(overallAvgDensity*100).toFixed(1)}% (${currentFeatures.denStr})`;
+
+        let bestGuess = "Standard";
+        let bestScore = -1;
+        
+        for (const [strategy, data] of Object.entries(layoutBayesModel)) {
+            let score = data.prior * (data.feats[currentFeatures.countStr] + 0.1) * (data.feats[currentFeatures.denStr] + 0.1);
+            if (score > bestScore) {
+                bestScore = score; bestGuess = strategy;
+            }
+        }
+        
+        document.getElementById('layoutPrediction').innerText = bestGuess;
+        document.getElementById('physicsControls').style.display = 'none';
+        document.getElementById('layoutProfilerPanel').style.display = 'block';
+        setStatus(`Space tessellated. Engine suggests ${bestGuess} Merge. Click to preview/execute.`);
+    }
+
+    document.getElementById('btnMergeAggressive').addEventListener('click', () => executeLayoutMerge('Aggressive'));
+    document.getElementById('btnMergeStandard').addEventListener('click', () => executeLayoutMerge('Standard'));
+    document.getElementById('btnMergeLight').addEventListener('click', () => executeLayoutMerge('Light'));
+
+    function executeLayoutMerge(strategy) {
+        layoutBayesModel[strategy].prior++;
+        layoutBayesModel[strategy].feats[currentFeatures.countStr]++;
+        layoutBayesModel[strategy].feats[currentFeatures.denStr]++;
+        localStorage.setItem('densityEngineLayoutBayes', JSON.stringify(layoutBayesModel));
+        // Keep panel open so user can instantly toggle strategies
+        runMasterCombine(strategy);
+    }
+
+    function boxesTouchOrIntersect(r1, r2) {
+        return !(r1.x + r1.w < r2.x || r1.x > r2.x + r2.w || r1.y + r1.h < r2.y || r1.y > r2.y + r2.h);
+    }
+    
+    function canMergeCleanly(r1, r2) {
+        let minX = Math.min(r1.x, r2.x), minY = Math.min(r1.y, r2.y);
+        let maxX = Math.max(r1.x + r1.w, r2.x + r2.w), maxY = Math.max(r1.y + r1.h, r2.y + r2.h);
+        return ((maxX - minX) * (maxY - minY)) <= ((r1.w * r1.h) + (r2.w * r2.h)) * 1.15; 
+    }
+
+    function mergeRegionsInArray(i, j) {
+        let r1 = activeRegions[i], r2 = activeRegions[j];
+        let nx = Math.min(r1.x, r2.x), ny = Math.min(r1.y, r2.y);
+        let nw = Math.max(r1.x+r1.w, r2.x+r2.w) - nx, nh = Math.max(r1.y+r1.h, r2.y+r2.h) - ny;
+        activeRegions[i] = new Region(nx, ny, nw, nh, r1.children + r2.children);
+        activeRegions.splice(j, 1);
+    }
+
+    function resetFromBackup() {
+        activeRegions = watershedBackup.map(r => new Region(r.x, r.y, r.w, r.h, r.children));
+    }
+
+    function canSemanticMerge(r1, r2, threshold) {
+        let d1 = getRegionInkDensity(r1.x, r1.y, r1.w, r1.h);
+        let d2 = getRegionInkDensity(r2.x, r2.y, r2.w, r2.h);
+        return Math.abs(d1 - d2) <= threshold; 
+    }
+
+    function runMasterCombine(strategyType) {
+        resetFromBackup();
+        
+        let semanticThreshold = strategyType === 'Aggressive' ? 0.15 : 0.06;
+        let orphanAreaRatio = strategyType === 'Aggressive' ? 0.50 : 0.25;
+        let runSubAverage = strategyType !== 'Light'; 
+        
+        let merging = true;
+        while(merging) {
+            merging = false;
+
+            // STRATEGY 1: Horizontal Contiguous Stitch
+            for(let i = 0; i < activeRegions.length; i++) {
+                for(let j = i + 1; j < activeRegions.length; j++) {
+                    let r1 = activeRegions[i], r2 = activeRegions[j];
+                    if (boxesTouchOrIntersect(r1, r2)) {
+                        let isHoriz = (Math.abs((r1.x + r1.w) - r2.x) <= 3 || Math.abs((r2.x + r2.w) - r1.x) <= 3);
+                        let yAlign = Math.abs(r1.y - r2.y) <= 10 && Math.abs((r1.y + r1.h) - (r2.y + r2.h)) <= 10;
+                        if (isHoriz && yAlign && canSemanticMerge(r1, r2, 0.15)) { 
+                            mergeRegionsInArray(i, j); merging = true; break;
+                        }
+                    }
+                }
+                if(merging) break;
+            }
+            if (merging) continue; 
+
+            // STRATEGY 2: Scale-Restricted Containment
+            for(let i = 0; i < activeRegions.length; i++) {
+                for(let j = i + 1; j < activeRegions.length; j++) {
+                    let r1 = activeRegions[i], r2 = activeRegions[j];
+                    if (!canSemanticMerge(r1, r2, semanticThreshold)) continue;
+                    
+                    let r1Above = Math.abs((r1.y + r1.h) - r2.y) <= 3;
+                    let r2Above = Math.abs((r2.y + r2.h) - r1.y) <= 3;
+
+                    if (r1Above || r2Above) {
+                        let area1 = r1.w * r1.h, area2 = r2.w * r2.h;
+                        let big = area1 > area2 ? r1 : r2, small = area1 > area2 ? r2 : r1;
+                        let isFragment = (small.w * small.h < (big.w * big.h) * orphanAreaRatio) || small.h < 35;
+                        if (isFragment) {
+                            let containsX = (big.x <= small.x + 5) && (big.x + big.w >= small.x + small.w - 5);
+                            if (containsX) {
+                                mergeRegionsInArray(i, j); merging = true; break;
+                            }
+                        }
+                    }
+                }
+                if(merging) break;
+            }
+            if (merging) continue;
+
+            // STRATEGY 3: Sub-Average Sweep
+            if (runSubAverage) {
+                let avgArea = activeRegions.reduce((sum, r) => sum + (r.w * r.h), 0) / activeRegions.length;
+                for(let i = 0; i < activeRegions.length; i++) {
+                    for(let j = i + 1; j < activeRegions.length; j++) {
+                        let r1 = activeRegions[i], r2 = activeRegions[j];
+                        if ((r1.w * r1.h) < avgArea && (r2.w * r2.h) < avgArea) {
+                            if (boxesTouchOrIntersect(r1, r2) && canMergeCleanly(r1, r2) && canSemanticMerge(r1, r2, semanticThreshold)) {
+                                mergeRegionsInArray(i, j); merging = true; break;
+                            }
+                        }
+                    }
+                    if(merging) break;
+                }
+            }
+        }
+        finalizeExtraction(`${strategyType} Master Combine`);
+    }
+
+    document.getElementById('btnMaster').addEventListener('click', () => runMasterCombine('Standard'));
+
+    document.getElementById('btnE3').addEventListener('click', () => {
+        resetFromBackup();
+        runTriSplitBanding();
+    });
+
+    function runTriSplitBanding() {
+        // 1. DENSITY-BASED GUTTER SEARCH
+        // Instead of intersection math, we sweep a thin line across the image
+        // and look for the physical path of least resistance (lowest ink density).
+        
+        let thickness = 4; // 4px wide search beam
+        
+        // --- HORIZONTAL SEARCH (Rows) ---
+        // Search zones: 20-45% for the top cut, 55-80% for the bottom cut
+        let hSearch1Start = Math.floor(imgHeight * 0.20);
+        let hSearch1End = Math.floor(imgHeight * 0.45);
+        let hSearch2Start = Math.floor(imgHeight * 0.55);
+        let hSearch2End = Math.floor(imgHeight * 0.80);
+
+        let bestH1Y = hSearch1Start, minH1Density = Infinity;
+        for (let y = hSearch1Start; y <= hSearch1End; y += 2) {
+            let d = getRegionInkDensity(0, y, imgWidth, thickness);
+            if (d < minH1Density) { minH1Density = d; bestH1Y = y; }
+        }
+
+        let bestH2Y = hSearch2Start, minH2Density = Infinity;
+        for (let y = hSearch2Start; y <= hSearch2End; y += 2) {
+            let d = getRegionInkDensity(0, y, imgWidth, thickness);
+            if (d < minH2Density) { minH2Density = d; bestH2Y = y; }
+        }
+        let hFitness = minH1Density + minH2Density;
+
+        // --- VERTICAL SEARCH (Columns) ---
+        let vSearch1Start = Math.floor(imgWidth * 0.20);
+        let vSearch1End = Math.floor(imgWidth * 0.45);
+        let vSearch2Start = Math.floor(imgWidth * 0.55);
+        let vSearch2End = Math.floor(imgWidth * 0.80);
+
+        let bestV1X = vSearch1Start, minV1Density = Infinity;
+        for (let x = vSearch1Start; x <= vSearch1End; x += 2) {
+            let d = getRegionInkDensity(x, 0, thickness, imgHeight);
+            if (d < minV1Density) { minV1Density = d; bestV1X = x; }
+        }
+
+        let bestV2X = vSearch2Start, minV2Density = Infinity;
+        for (let x = vSearch2Start; x <= vSearch2End; x += 2) {
+            let d = getRegionInkDensity(x, 0, thickness, imgHeight);
+            if (d < minV2Density) { minV2Density = d; bestV2X = x; }
+        }
+        let vFitness = minV1Density + minV2Density;
+
+        // --- SELECTION LOGIC ---
+        // The orientation that found the "whitest" paths wins
+        let isHorizontalWinner = (hFitness <= vFitness);
+        let cutDirection = isHorizontalWinner ? "Horizontal" : "Vertical";
+        
+        let regions = [];
+        
+        if (isHorizontalWinner) {
+            let h1Count = activeRegions.filter(r => r.y + r.h / 2 < bestH1Y).length;
+            let h2Count = activeRegions.filter(r => r.y + r.h / 2 >= bestH1Y && r.y + r.h / 2 <= bestH2Y).length;
+            let h3Count = activeRegions.filter(r => r.y + r.h / 2 > bestH2Y).length;
+            
+            // 5% overlap to create a shared "stitching zone" between bands
+            let overlap = Math.floor(imgHeight * 0.05); 
+            
+            let topBandBottom = Math.min(imgHeight, bestH1Y + overlap);
+            let midBandTop = Math.max(0, bestH1Y - overlap);
+            let midBandBottom = Math.min(imgHeight, bestH2Y + overlap);
+            let botBandTop = Math.max(0, bestH2Y - overlap);
+
+            regions.push(new Region(0, 0, imgWidth, topBandBottom, h1Count));
+            regions.push(new Region(0, midBandTop, imgWidth, midBandBottom - midBandTop, h2Count));
+            regions.push(new Region(0, botBandTop, imgWidth, imgHeight - botBandTop, h3Count));
+        } else {
+            let v1Count = activeRegions.filter(r => r.x + r.w / 2 < bestV1X).length;
+            let v2Count = activeRegions.filter(r => r.x + r.w / 2 >= bestV1X && r.x + r.w / 2 <= bestV2X).length;
+            let v3Count = activeRegions.filter(r => r.x + r.w / 2 > bestV2X).length;
+            
+            // 5% overlap to create a shared "stitching zone" between bands
+            let overlap = Math.floor(imgWidth * 0.05); 
+            
+            let leftBandRight = Math.min(imgWidth, bestV1X + overlap);
+            let midBandLeft = Math.max(0, bestV1X - overlap);
+            let midBandRight = Math.min(imgWidth, bestV2X + overlap);
+            let rightBandLeft = Math.max(0, bestV2X - overlap);
+            
+            regions.push(new Region(0, 0, leftBandRight, imgHeight, v1Count));
+            regions.push(new Region(midBandLeft, 0, midBandRight - midBandLeft, imgHeight, v2Count));
+            regions.push(new Region(rightBandLeft, 0, imgWidth - rightBandLeft, imgHeight, v3Count));
+        }
+
+        activeRegions = regions;
+        activeRegions[0].color = 'rgba(239, 68, 68, 0.8)'; 
+        activeRegions[1].color = 'rgba(59, 130, 246, 0.8)'; 
+        activeRegions[2].color = 'rgba(16, 185, 129, 0.8)'; 
+        activeRegions.forEach((r, i) => r.classification = `Band ${i+1}`);
+
+        finalizeExtraction(`Tri-Split ${cutDirection} Banding`);
+        setStatus(`Tri-Split Complete. Cut ${cutDirection}. Ink Under Cuts (H: ${(hFitness*100).toFixed(1)}%, V: ${(vFitness*100).toFixed(1)}%)`);
+    }
+
+    function finalizeExtraction(name) {
+        let score = activeRegions.reduce((sum, r) => sum + Math.pow(r.w * r.h, 2), 0);
+        let normalizedScore = (score / Math.pow(imgWidth * imgHeight, 2) * 100).toFixed(2);
+
+        activeRegions.forEach(r => {
+            let trueDensity = getRegionInkDensity(r.x, r.y, r.w, r.h);
+            r.densityValue = trueDensity;
+
+            if (r.classification === "Unknown") {
+                if (trueDensity > 0.35) {
+                    r.color = '#ef4444'; 
+                    r.classification = "Image/Graphic";
+                } else if (trueDensity >= 0.07 && trueDensity <= 0.35) {
+                    r.color = '#10b981'; 
+                    r.classification = "Text Paragraph";
+                } else {
+                    if (r.children > 4 || r.w > imgWidth * 0.3 || r.h > imgHeight * 0.2) {
+                        r.color = '#3b82f6'; 
+                        r.classification = "Sparse Table";
+                    } else {
+                        r.color = '#f59e0b'; 
+                        r.classification = "Caption/Artifact";
+                    }
+                }
+            } else if (!r.classification.startsWith("Band")) {
+                r.color = '#8b5cf6';
+            }
+        });
+
+        drawRegions(activeRegions);
+        if (!name.includes("Banding")) {
+            setStatus(`${name} Complete. Final Blocks: ${activeRegions.length}`);
+        }
+        
+        document.getElementById('finalPassButtons').style.display = 'flex';
+        document.getElementById('fitnessScore').innerText = `Consolidation Score: ${normalizedScore}`;
+
+        jsonOutput.value = JSON.stringify({
+            strategyUsed: name,
+            consolidationScore: normalizedScore,
+            blocksFound: activeRegions.length,
+            layoutBlocks: activeRegions.map(r => ({
+                type: r.classification,
+                inkDensity: (r.densityValue * 100).toFixed(1) + "%",
+                atomsMerged: r.children,
+                bounds: {
+                    x: Math.round(r.x), y: Math.round(r.y),
+                    w: Math.round(r.w), h: Math.round(r.h)
+                }
+            }))
+        }, null, 2);
+    }
+
+    function drawRegions(regions) {
+        if (chkOverlay.checked) {
+            ctx.putImageData(originalImgData, 0, 0);
+        } else {
+            ctx.putImageData(currentImgData, 0, 0);
+        }
+        
+        regions.forEach(r => {
+            ctx.strokeStyle = r.color || '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(r.x, r.y, r.w, r.h);
+            
+            if (r.color) {
+                let fill = r.color.startsWith('#') ? r.color + '33' : r.color.replace(')', ', 0.2)').replace('hsl', 'hsla');
+                if(fill.includes('rgb(')) fill = fill.replace('rgb(', 'rgba(').replace(')', ', 0.2)');
+                ctx.fillStyle = fill;
+                ctx.fillRect(r.x, r.y, r.w, r.h);
+            }
+        });
+    }
+    
+    chkOverlay.addEventListener('change', () => {
+        if (activeRegions && activeRegions.length > 0) {
+            drawRegions(activeRegions);
+        } else if (currentImgData) {
+            ctx.putImageData(chkOverlay.checked ? originalImgData : currentImgData, 0, 0);
+        }
+    });
+</script>
+</body>
+</html>
